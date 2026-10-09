@@ -161,3 +161,12 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Python generated files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local development files
+.DS_Store
