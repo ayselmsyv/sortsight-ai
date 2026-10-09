@@ -41,6 +41,17 @@ class LabelAnalysis(BaseModel):
         )
     )
 
+    confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Model-estimated confidence in the readability and accuracy "
+            "of extracted label information, from 0 to 1. "
+            "Return null when confidence cannot be estimated."
+        ),
+    )
+
     @field_validator(
         "tracking_number",
         "destination",
@@ -66,6 +77,10 @@ LABEL_ANALYSIS_SCHEMA = types.Schema(
             type=types.Type.ARRAY,
             items=types.Schema(type=types.Type.STRING),
         ),
+        "confidence": types.Schema(
+            type=types.Type.NUMBER,
+            nullable=True,
+        ),
     },
     required=[
         "tracking_number",
@@ -73,6 +88,7 @@ LABEL_ANALYSIS_SCHEMA = types.Schema(
         "destination_city",
         "destination_country",
         "issues",
+        "confidence",
     ],
     property_ordering=[
         "tracking_number",
@@ -80,6 +96,7 @@ LABEL_ANALYSIS_SCHEMA = types.Schema(
         "destination_city",
         "destination_country",
         "issues",
+        "confidence",
     ],
 )
 
@@ -116,7 +133,15 @@ those fields. Include LABEL_BLURRED when the label is visibly blurry.
 If no shipping label is present, return null for all extracted fields and
 include LABEL_NOT_FOUND in issues. Do not report suspected data inconsistencies,
 routing concerns, or issues inferred from information outside the image. If the
-label is readable and has no visible problems, return an empty issues list."""
+label is readable and has no visible problems, return an empty issues list.
+
+Also return confidence as a number between 0 and 1 representing your
+estimated confidence in the accuracy and readability of the extracted
+information. Use lower confidence for unclear or partially readable labels.
+Return null if confidence cannot be estimated.
+
+This is a model-estimated confidence score, not a calibrated probability.
+Never fabricate missing label information to increase confidence."""
 
 
 async def analyze_label(image: bytes, mime_type: str) -> LabelAnalysis:

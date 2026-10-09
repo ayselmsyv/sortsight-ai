@@ -20,6 +20,41 @@ const lanes = [
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("Overview");
+  type InspectionRecord = {
+  package_id: string;
+  tracking_number: string | null;
+  destination: string | null;
+  issues: string[];
+  decision: {
+    action: string;
+    lane: string | null;
+    reason: string;
+  };
+};
+
+const [inspectionHistory, setInspectionHistory] = useState<InspectionRecord[]>([]);
+
+useEffect(() => {
+  function loadInspections() {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("sortsight_inspections") || "[]"
+      );
+
+      setInspectionHistory(Array.isArray(saved) ? saved : []);
+    } catch {
+      setInspectionHistory([]);
+    }
+  }
+
+  loadInspections();
+
+  window.addEventListener("focus", loadInspections);
+
+  return () => {
+    window.removeEventListener("focus", loadInspections);
+  };
+}, []);
   const [livePackages, setLivePackages] = useState<
   {
     id: string;
@@ -182,6 +217,14 @@ export default function Dashboard() {
             ))}
           </nav>
 
+          <a
+            href="/upload"
+            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-400 transition hover:bg-white/5 hover:text-cyan-300"
+          >
+            <span className="text-lg">✦</span>
+            AI Inspection
+          </a>
+
           <div className="mt-auto rounded-2xl border border-white/[0.08] bg-white/[0.025] p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
@@ -227,6 +270,64 @@ export default function Dashboard() {
               </div>
             </div>
           </header>
+          <div className="mx-5 mt-6 rounded-2xl border border-cyan-400/20 bg-[#101827] p-5 sm:mx-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">
+                  Live AI Inspection History
+                </h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Real results from Gemini Vision and Sorting Engine
+                </p>
+              </div>
+
+              <a
+                href="/upload"
+                className="rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950"
+              >
+                + Inspect Package
+              </a>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              {inspectionHistory.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No inspections yet. Upload a package label to get started.
+                </p>
+              ) : (
+                inspectionHistory.map((item) => (
+                  <div
+                    key={item.package_id}
+                    className="rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                  >
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-white">
+                          {item.tracking_number || "Unknown tracking"}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-400">
+                          {item.destination || "Unknown destination"}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="font-semibold text-cyan-300">
+                          {item.decision.action}
+                        </p>
+                        <p className="text-sm text-slate-400">
+                          {item.decision.lane || "REVIEW"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-xs text-slate-500">
+                      Package ID: {item.package_id}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
           <div className="space-y-8 p-5 sm:p-8">
             <div className="flex flex-wrap items-end justify-between gap-3">
