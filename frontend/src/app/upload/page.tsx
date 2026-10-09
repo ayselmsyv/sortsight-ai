@@ -135,6 +135,22 @@ export default function UploadPage() {
       }
 
       setResult(responseBody);
+
+      // Save inspection results for the dashboard
+      try {
+        const previous = JSON.parse(
+          localStorage.getItem("sortsight_inspections") || "[]"
+        );
+
+        const inspections = Array.isArray(previous) ? previous : [];
+
+        localStorage.setItem(
+          "sortsight_inspections",
+          JSON.stringify([responseBody, ...inspections].slice(0, 50))
+        );
+      } catch (storageError) {
+        console.error("Unable to save inspection history:", storageError);
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error
