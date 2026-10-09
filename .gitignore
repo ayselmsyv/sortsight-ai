@@ -170,3 +170,4 @@ venv/
 
 # Local development files
 .DS_Store
+.venv_new/

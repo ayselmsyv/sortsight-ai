@@ -1,8 +1,10 @@
+
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.services.vision import VisionAnalysisError, analyze_label
+from app.services.routing import decide_sorting
 
 router = APIRouter(prefix="/inspection", tags=["inspection"])
 
@@ -37,16 +39,19 @@ async def analyze_image(image: UploadFile = File(...)) -> dict[str, object]:
         )
 
     content = await image.read(MAX_FILE_SIZE + 1)
+
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The uploaded image is empty",
         )
+
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="The uploaded image must not exceed 5 MB",
         )
+
     if not _matches_image_format(content, image.content_type):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -54,21 +59,48 @@ async def analyze_image(image: UploadFile = File(...)) -> dict[str, object]:
         )
 
     package_id = str(uuid4())
+
     try:
         analysis = await analyze_label(content, image.content_type)
+
         tracking_number = analysis.tracking_number
         destination = analysis.destination
         destination_city = analysis.destination_city
         destination_country = analysis.destination_country
         issues = analysis.issues
-        reason = "Automated sorting is not integrated; manual review is required."
+        confidence = getattr(analysis, "confidence", None)
+
+        if confidence is not None:
+            confidence = float(confidence)
+            confidence = max(0.0, min(1.0, confidence))
+
     except VisionAnalysisError:
         tracking_number = None
         destination = None
         destination_city = None
         destination_country = None
         issues = ["AI_ANALYSIS_UNAVAILABLE"]
-        reason = "AI label analysis is unavailable; manual review is required."
+        confidence = None
+
+    package = {
+        "package_id": package_id,
+        "tracking_number": tracking_number,
+        "destination": destination_city or destination,
+        "issues": issues,
+        "confidence": confidence,
+    }
+
+    if "AI_ANALYSIS_UNAVAILABLE" in issues:
+        decision = {
+            "action": "MANUAL_REVIEW",
+            "lane": "REVIEW",
+            "reason": "AI label analysis is unavailable.",
+        }
+    else:
+        decision = decide_sorting(package)
+
+    if decision["action"] == "MANUAL_REVIEW" and decision.get("lane") is None:
+        decision["lane"] = "REVIEW"
 
     return {
         "package_id": package_id,
@@ -77,10 +109,6 @@ async def analyze_image(image: UploadFile = File(...)) -> dict[str, object]:
         "destination_city": destination_city,
         "destination_country": destination_country,
         "issues": issues,
-        "confidence": None,
-        "decision": {
-            "action": "MANUAL_REVIEW",
-            "lane": "REVIEW",
-            "reason": reason,
-        },
+        "confidence": confidence,
+        "decision": decision,
     }
