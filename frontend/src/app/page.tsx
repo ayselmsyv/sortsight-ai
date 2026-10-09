@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 const packages = [
   { id: "PKG-1042", destination: "Baku", lane: "LANE A", confidence: 98, status: "Sorted", time: "12:42:08" },
