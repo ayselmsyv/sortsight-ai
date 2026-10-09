@@ -1,3 +1,17 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
 # Logs
 logs
 *.log
@@ -156,3 +170,4 @@ venv/
 
 # Local development files
 .DS_Store
+.venv_new/
