@@ -1,7 +1,8 @@
-
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const API_URL = "http://127.0.0.1:8000";
 
 const packages = [
   { id: "PKG-1042", destination: "Baku", lane: "LANE A", confidence: 98, status: "Sorted", time: "12:42:08" },
@@ -19,18 +20,118 @@ const lanes = [
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("Overview");
+  const [livePackages, setLivePackages] = useState<
+  {
+    id: string;
+    destination: string;
+    lane: string;
+    confidence: number;
+    status: string;
+    time: string;
+  }[]
+>([]);
   const [filter, setFilter] = useState("All");
   const [reviewed, setReviewed] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
+  const [apiOnline, setApiOnline] = useState(false);
+  useEffect(() => {
+  async function checkApi() {
+    try {
+      const response = await fetch(`${API_URL}/api/sorting/health`);
+      setApiOnline(response.ok);
+    } catch {
+      setApiOnline(false);
+    }
+  }
 
-  const visiblePackages = packages.filter((pkg) => {
-    if (filter === "Review") return pkg.status === "Review";
-    if (filter === "Sorted") return pkg.status === "Sorted";
-    return true;
-  });
+  checkApi();
+  const interval = setInterval(checkApi, 10000);
 
-  const reviewCount = packages.filter(
-    (pkg) => pkg.status === "Review" && !reviewed.includes(pkg.id)
+  return () => clearInterval(interval);
+}, []);
+
+  const [testPackageId, setTestPackageId] = useState("PKG-TEST-001");
+  const [trackingNumber, setTrackingNumber] = useState("AZ123456");
+  const [destination, setDestination] = useState("Baku");
+  const [confidence, setConfidence] = useState("0.97");
+  const [issues, setIssues] = useState("");
+  const [sortingResult, setSortingResult] = useState<{
+    package_id: string;
+    destination: string | null;
+    status: string;
+    decision: {
+      action: string;
+      lane: string | null;
+      reason: string;
+    };
+  } | null>(null);
+  const [sortingLoading, setSortingLoading] = useState(false);
+  const [sortingError, setSortingError] = useState("");
+
+  async function testSorting() {
+    setSortingLoading(true);
+    setSortingError("");
+    setSortingResult(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/sorting/decide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          package_id: testPackageId,
+          tracking_number: trackingNumber || null,
+          destination: destination || null,
+          issues: issues.trim()
+            ? issues.split(",").map((issue) => issue.trim()).filter(Boolean)
+            : [],
+          confidence: confidence.trim() === "" ? null : Number(confidence),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error("The sorting API rejected the request.");
+      }
+
+      setSortingResult(data);
+
+      setLivePackages((previous) => [
+  {
+        id: data.package_id,
+        destination: data.destination ?? "Unknown",
+        lane: data.decision.lane ?? "—",
+        confidence: Math.round(Number(confidence) * 100),
+        status: data.status === "SORT" ? "Sorted" : "Review",
+        time: new Date().toLocaleTimeString(),
+  },
+  ...previous.filter((pkg) => pkg.id !== data.package_id),
+]);
+    } catch (error) {
+      setSortingError(
+        error instanceof Error
+          ? error.message
+          : "Could not connect to the sorting API."
+      );
+    } finally {
+      setSortingLoading(false);
+    }
+  }
+
+
+  const allPackages = [...livePackages, ...packages];
+
+  const visiblePackages = allPackages.filter((pkg) => {
+  if (filter === "Review") {
+    return pkg.status === "Review" && !reviewed.includes(pkg.id);
+  }
+  if (filter === "Sorted") return pkg.status === "Sorted";
+  return true;
+});
+
+
+  const reviewCount = allPackages.filter(
+  (pkg) => pkg.status === "Review" && !reviewed.includes(pkg.id)
   ).length;
 
   return (
@@ -86,7 +187,11 @@ export default function Dashboard() {
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
               System status
             </div>
-            <p className="text-xs leading-5 text-slate-500">Dashboard interface online. API connection will be checked next.</p>
+            <p className="text-xs leading-5 text-slate-500">
+  {apiOnline
+    ? "Sorting API connected and responding."
+    : "Sorting API offline or unreachable."}
+</p>
             <div className="mt-4 flex items-center justify-between text-xs">
               <span className="text-slate-500">Environment</span>
               <span className="text-slate-300">Development</span>
@@ -103,10 +208,20 @@ export default function Dashboard() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <span className="flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2 text-xs text-emerald-300">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                Interface online
-              </span>
+              <span
+  className={`flex items-center gap-2 rounded-full border px-3 py-2 text-xs ${
+    apiOnline
+      ? "border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-300"
+      : "border-amber-400/20 bg-amber-400/[0.06] text-amber-300"
+  }`}
+>
+  <span
+    className={`h-2 w-2 rounded-full ${
+      apiOnline ? "bg-emerald-400" : "bg-amber-400"
+    }`}
+  />
+  {apiOnline ? "API online" : "API offline"}
+</span>
               <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold">
                 OP
               </div>
@@ -131,6 +246,61 @@ export default function Dashboard() {
               </button>
             </div>
 
+
+            <section className="rounded-2xl border border-cyan-400/20 bg-[#101725] p-5 sm:p-6">
+              <h2 className="text-lg font-semibold">Test package sorting</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Send a package to the live sorting API.
+              </p>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <label className="text-sm text-slate-300">
+                  Package ID
+                  <input value={testPackageId} onChange={(e) => setTestPackageId(e.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-[#090d16] p-3 text-white" />
+                </label>
+                <label className="text-sm text-slate-300">
+                  Tracking number
+                  <input value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-[#090d16] p-3 text-white" />
+                </label>
+                <label className="text-sm text-slate-300">
+                  Destination
+                  <select value={destination} onChange={(e) => setDestination(e.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-[#090d16] p-3 text-white">
+                    <option value="Baku">Baku</option>
+                    <option value="Ganja">Ganja</option>
+                    <option value="Sumqayit">Sumqayit</option>
+                    <option value="Unknown">Unknown destination</option>
+                  </select>
+                </label>
+                <label className="text-sm text-slate-300">
+                  Confidence (0 to 1)
+                  <input type="number" min="0" max="1" step="0.01" value={confidence} onChange={(e) => setConfidence(e.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-[#090d16] p-3 text-white" />
+                </label>
+                <label className="text-sm text-slate-300 sm:col-span-2">
+                  Inspection issues (comma-separated, if any)
+                  <input value={issues} onChange={(e) => setIssues(e.target.value)} placeholder="e.g. damaged label, unreadable barcode" className="mt-2 w-full rounded-lg border border-white/10 bg-[#090d16] p-3 text-white" />
+                </label>
+              </div>
+
+              <button onClick={testSorting} disabled={sortingLoading} className="mt-5 rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-slate-950 disabled:opacity-50">
+                {sortingLoading ? "Checking..." : "Run sorting decision"}
+              </button>
+
+              {sortingError && <p className="mt-4 text-sm text-red-300">{sortingError}</p>}
+
+              {sortingResult && (
+                <div className="mt-5 rounded-xl border border-white/10 bg-[#090d16] p-4">
+                  <p className="font-semibold text-cyan-300">
+                    Result: {sortingResult.status}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-300">
+                    Lane: {sortingResult.decision.lane ?? "Manual review"}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {sortingResult.decision.reason}
+                  </p>
+                </div>
+              )}
+            </section>
             {notice && (
               <div className="flex items-center justify-between rounded-xl border border-cyan-400/20 bg-cyan-400/5 px-4 py-3 text-sm text-cyan-200">
                 {notice}
@@ -142,7 +312,7 @@ export default function Dashboard() {
               {[
                 { label: "Packages processed", value: "1,284", change: "+12.8%", icon: "▤", color: "text-cyan-300" },
                 { label: "Successfully sorted", value: "1,196", change: "93.2% of total", icon: "✓", color: "text-emerald-300" },
-                { label: "Needs review", value: String(reviewCount + 84), change: "Requires attention", icon: "◎", color: "text-amber-300" },
+                { label: "Needs review", value: String(reviewCount), change: "Requires attention", icon: "◎", color: "text-amber-300" },
                 { label: "Avg. AI confidence", value: "94.6%", change: "Target ≥ 85%", icon: "⌁", color: "text-violet-300" },
               ].map((stat) => (
                 <div key={stat.label} className="rounded-2xl border border-white/[0.08] bg-[#101725] p-5">
@@ -268,9 +438,11 @@ export default function Dashboard() {
                             ) : (
                               <button
                                 onClick={() => {
-                                  setReviewed((previous) => [...previous, pkg.id]);
-                                  setNotice(`${pkg.id} marked as reviewed in this demo.`);
-                                }}
+                                                                                setReviewed((previous) =>
+                                                                                     previous.includes(pkg.id) ? previous : [...previous, pkg.id]
+  );
+  setNotice(`${pkg.id} marked as reviewed.`);
+}}
                                 className="rounded-full bg-amber-400/10 px-3 py-1.5 text-xs text-amber-300 hover:bg-amber-400/20"
                               >
                                 Review →
